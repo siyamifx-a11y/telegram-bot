@@ -1,19 +1,15 @@
+import os
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-TOKEN = "8315948698:AAH_iMhHlywJXdf7xNJYjHUDRFU79FxWZXk"
-
-ADMINS = [6868863101]
+TOKEN = os.getenv("Token")
 
 videos = []
 user_index = {}
 
-custom_commands = {}
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Welcome! Type /video to get a video.")
 
-# VIDEO QUEUE
 async def video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
 
@@ -22,96 +18,29 @@ async def video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     index = user_index.get(user_id, 0)
+    video_file = videos[index]
 
-    if index >= len(videos):
-        await update.message.reply_text("No more new videos.")
-        return
+    await update.message.reply_video(video_file)
 
-    await update.message.reply_video(videos[index])
-    user_index[user_id] = index + 1
+    index = (index + 1) % len(videos)
+    user_index[user_id] = index
 
 async def addvideo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.from_user.id not in ADMINS:
-        return
-    await update.message.reply_text("Send the video you want to add.")
+    if update.message.video:
+        videos.append(update.message.video.file_id)
+        await update.message.reply_text("Video added.")
+    else:
+        await update.message.reply_text("Send a video with this command.")
 
-async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.from_user.id not in ADMINS:
-        return
+def main():
+    app = ApplicationBuilder().token(TOKEN).build()
 
-    file_id = update.message.video.file_id
-    videos.append(file_id)
-    await update.message.reply_text("Video added successfully.")
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("video", video))
+    app.add_handler(CommandHandler("addvideo", addvideo))
 
-# ADMIN SYSTEM
-async def addadmin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.from_user.id not in ADMINS:
-        return
-    try:
-        new_admin_id = int(context.args[0])
-        if new_admin_id not in ADMINS:
-            ADMINS.append(new_admin_id)
-            await update.message.reply_text(f"Admin {new_admin_id} added.")
-        else:
-            await update.message.reply_text("User is already admin.")
-    except:
-        await update.message.reply_text("Usage: /addadmin USER_ID")
+    app.run_polling()
 
-async def removeadmin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.from_user.id not in ADMINS:
-        return
-    try:
-        admin_id = int(context.args[0])
-        if admin_id in ADMINS:
-            ADMINS.remove(admin_id)
-            await update.message.reply_text(f"Admin {admin_id} removed.")
-        else:
-            await update.message.reply_text("User is not admin.")
-    except:
-        await update.message.reply_text("Usage: /removeadmin USER_ID")
+if __name__ == "__main__":
+    main()
 
-# CUSTOM COMMAND SYSTEM
-pending_command = {}
-
-async def commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.from_user.id not in ADMINS:
-        return
-    await update.message.reply_text(
-        "Send command name.\nExample:\ncourse\n(signal command without /)"
-    )
-    pending_command[update.message.from_user.id] = "waiting_name"
-
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    text = update.message.text
-
-    # Admin creating command
-    if user_id in pending_command:
-        if pending_command[user_id] == "waiting_name":
-            pending_command[user_id] = text
-            await update.message.reply_text("Now send the video or text for this command.")
-        else:
-            command_name = pending_command[user_id]
-            custom_commands[command_name] = text
-            del pending_command[user_id]
-            await update.message.reply_text(f"/{command_name} command created.")
-        return
-
-    # User using custom command
-    cmd = text.replace("/", "")
-    if cmd in custom_commands:
-        await update.message.reply_text(custom_commands[cmd])
-
-app = ApplicationBuilder().token(TOKEN).build()
-
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("video", video))
-app.add_handler(CommandHandler("addvideo", addvideo))
-app.add_handler(CommandHandler("addadmin", addadmin))
-app.add_handler(CommandHandler("removeadmin", removeadmin))
-app.add_handler(CommandHandler("commands", commands))
-
-app.add_handler(MessageHandler(filters.VIDEO, handle_video))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-
-app.run_polling()
